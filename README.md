@@ -1,3 +1,22 @@
+# to do list
+
+1. Find weather information - howard
+2. Create a .py with the pipeline, so we can experiment - sam
+3. research some nice time series algorithms, try to implement them with the data we have - both
+
+# Goals
+
+2nd - Find the data, and find a model
+
+7th - Finalize model and data
+
+11th - Submission
+14th - Report
+20th - Presentation
+
+
+
+
 # Starting kit on the bike counters dataset
 
 Read the instruction from the [Kaggle challenge](https://www.kaggle.com/competitions/mdsb-2023/overview).
