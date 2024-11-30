@@ -56,10 +56,12 @@ print(
 )
 
 
-#Model setup
+#Model setup 
+#make sparse output = true for non GB reg models - it's faster
 
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import Ridge
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 from sklearn.pipeline import make_pipeline
 
@@ -67,15 +69,13 @@ date_encoder = FunctionTransformer(_encode_dates)
 #make sure to pass any date columns here as well
 date_cols = _encode_dates(X_train[["date", 'counter_installation_date']]).columns.tolist() 
 
-#install_cols =  _encode_dates(X_train[['counter_installation_date']], 'counter_installation_date').columns.tolist()
-
-categorical_encoder = OneHotEncoder(handle_unknown="ignore")
+categorical_encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 categorical_cols = ["counter_name", "site_name"]
 location_cols = ['latitude', 'longitude']
 
 preprocessor = ColumnTransformer(
     [
-        ("date", OneHotEncoder(handle_unknown="ignore"), date_cols),
+        ("date", OneHotEncoder(handle_unknown="ignore", sparse_output=False), date_cols),
         #("install", OneHotEncoder(handle_unknown="ignore"), install_cols),
         ("cat", categorical_encoder, categorical_cols),
         ('location', 'passthrough', location_cols)
@@ -84,7 +84,7 @@ preprocessor = ColumnTransformer(
 )
 
 #Ridge, HistGradientBoostingRegressor
-regressor = utils.get_model('Ridge')
+regressor = HistGradientBoostingRegressor()
 
 pipe = make_pipeline(date_encoder, preprocessor, regressor)
 pipe.fit(X_train, y_train)
@@ -119,6 +119,8 @@ submission = pd.DataFrame(sol)
 submission.set_index("Id", inplace=True)
 submission.to_csv('submission.csv')
 
+
+# feature importances
 print(pipe.steps)
 feature_names = pipe.steps[1][1].get_feature_names_out()
 print("Features after preprocessing:", feature_names)
