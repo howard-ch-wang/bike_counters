@@ -8,17 +8,18 @@ from external_data import example_estimator
 
 #helper functions
 
-def _encode_dates(X):
+def _encode_dates(X, cols=['date', 'counter_installation_date']):
     X = X.copy()  # modify a copy of X
     # Encode the date information from the DateOfDeparture columns
-    X["year"] = X["date"].dt.year
-    X["month"] = X["date"].dt.month
-    X["day"] = X["date"].dt.day
-    X["weekday"] = X["date"].dt.weekday
-    X["hour"] = X["date"].dt.hour
+    for time_col in cols:
+        X[f"{time_col}_year"] = X[time_col].dt.year
+        X[f"{time_col}_month"] = X[time_col].dt.month
+        X[f"{time_col}_day"] = X[time_col].dt.day
+        X[f"{time_col}_weekday"] = X[time_col].dt.weekday
+        X[f"{time_col}_hour"] = X[time_col].dt.hour
 
     # Finally we can drop the original columns from the dataframe
-    return X.drop(columns=["date"])
+    return X.drop(columns=cols)
 
 def train_test_split_temporal(X, y, delta_threshold="30 days"):
     
@@ -55,27 +56,35 @@ print(
 )
 
 
-#Model setup
+#Model setup 
+#make sparse output = true for non GB reg models - it's faster
 
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import Ridge
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 from sklearn.pipeline import make_pipeline
 
 date_encoder = FunctionTransformer(_encode_dates)
-date_cols = _encode_dates(X_train[["date"]]).columns.tolist()
+#make sure to pass any date columns here as well
+date_cols = _encode_dates(X_train[["date", 'counter_installation_date']]).columns.tolist() 
 
-categorical_encoder = OneHotEncoder(handle_unknown="ignore")
+categorical_encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 categorical_cols = ["counter_name", "site_name"]
+location_cols = ['latitude', 'longitude']
 
 preprocessor = ColumnTransformer(
     [
-        ("date", OneHotEncoder(handle_unknown="ignore"), date_cols),
+        ("date", OneHotEncoder(handle_unknown="ignore", sparse_output=False), date_cols),
+        #("install", OneHotEncoder(handle_unknown="ignore"), install_cols),
         ("cat", categorical_encoder, categorical_cols),
-    ]
+        ('location', 'passthrough', location_cols)
+    ],
+    #remainder='passthrough'
 )
 
-regressor = Ridge()
+#Ridge, HistGradientBoostingRegressor
+regressor = HistGradientBoostingRegressor()
 
 pipe = make_pipeline(date_encoder, preprocessor, regressor)
 pipe.fit(X_train, y_train)
@@ -109,5 +118,9 @@ sol = {
 submission = pd.DataFrame(sol)
 submission.set_index("Id", inplace=True)
 submission.to_csv('submission.csv')
-print(submission.info())
-print(submission.head())
+
+
+# feature importances
+print(pipe.steps)
+feature_names = pipe.steps[1][1].get_feature_names_out()
+print("Features after preprocessing:", feature_names)
