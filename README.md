@@ -1,8 +1,10 @@
 # to do list
 
 1. Find weather information - howard
-2. Create a .py with the pipeline, so we can experiment - sam
+2. DONE Create a .py with the pipeline, so we can experiment - sam
 3. research some nice time series algorithms, try to implement them with the data we have - both
+
+4. merge existing external data to the basic dataset - sam
 
 # Goals
 
