@@ -26,6 +26,7 @@ def _encode_dates(X):
 def _merge_external_data(X):
     file_path = Path(__file__).parent / "external_data.csv"
     df_ext = pd.read_csv(file_path, parse_dates=["date"])
+    df_ext['date'] = df_ext['date'].astype('datetime64[us]') #small date incompatibility
 
     X = X.copy()
     # When using merge_asof left frame need to be sorted
@@ -33,6 +34,7 @@ def _merge_external_data(X):
     X = pd.merge_asof(
         X.sort_values("date"), df_ext[["date", "t"]].sort_values("date"), on="date"
     )
+    #to add more columns, need to add in the merge line. 
     # Sort back to the original order
     X = X.sort_values("orig_index")
     del X["orig_index"]
