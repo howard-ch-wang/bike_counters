@@ -43,7 +43,7 @@ def get_test_data(path="data/final_test.parquet"):
 
 #data = pd.read_parquet(Path("data") / "train.parquet")
 X, y = utils.get_train_data()
-#X = example_estimator._merge_external_data(X)
+X = example_estimator._merge_external_data(X)
 print(f'Data: {X.columns}')
 
 X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
@@ -62,7 +62,7 @@ print(
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 from sklearn.pipeline import make_pipeline
 
 date_encoder = FunctionTransformer(_encode_dates)
@@ -72,19 +72,24 @@ date_cols = _encode_dates(X_train[["date", 'counter_installation_date']]).column
 categorical_encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 categorical_cols = ["counter_name", "site_name"]
 location_cols = ['latitude', 'longitude']
+numerical_cols = ['t']
 
 preprocessor = ColumnTransformer(
     [
         ("date", OneHotEncoder(handle_unknown="ignore", sparse_output=False), date_cols),
         #("install", OneHotEncoder(handle_unknown="ignore"), install_cols),
         ("cat", categorical_encoder, categorical_cols),
-        ('location', 'passthrough', location_cols)
+        ('location', 'passthrough', location_cols),
+        ('numerical', StandardScaler(), numerical_cols)
     ],
     #remainder='passthrough'
 )
 
 #Ridge, HistGradientBoostingRegressor
 regressor = HistGradientBoostingRegressor()
+#regressor = Ridge()
+
+print(f'Building with {regressor}')
 
 pipe = make_pipeline(date_encoder, preprocessor, regressor)
 pipe.fit(X_train, y_train)
@@ -108,6 +113,7 @@ print('success')
 #getting the test data, making the predictions
 
 X_test = get_test_data()
+X_test = example_estimator._merge_external_data(X_test)
 y_pred = pipe.predict(X_test)
 
 sol = {
