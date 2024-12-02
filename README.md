@@ -5,6 +5,8 @@
 3. research some nice time series algorithms, try to implement them with the data we have - both
 
 4. DONE merge existing external data to the basic dataset - sam
+5. DONE Implement GMR, test it and make a submission - sam
+6. Inspect the test X distributions and the training X distributions - sam
 
 # Goals
 
