@@ -89,6 +89,9 @@ def get_test_data(path="data/final_test.parquet"):
 
 #data = pd.read_parquet(Path("data") / "train.parquet")
 X, y = utils.get_train_data()
+y = y.reshape(-1, 1)
+print(y.shape)
+#y = np.exp(y)
 X = _merge_external_data(X)
 X = covid_dates(X)
 print(f'Data: {X.columns}')
@@ -98,9 +101,9 @@ X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
 current_time = X_train['date'].max()
 time_diff = (current_time - X_train['date']).dt.days
 
-# Exponential decay weights
-decay_rate = 0.05  # Adjust this parameter
-weights = np.exp(-decay_rate * time_diff)
+# # Exponential decay weights
+# decay_rate = 0.05  # Adjust this parameter
+# weights = np.exp(-decay_rate * time_diff)
 
 print(
     f'Train: n_samples={X_train.shape[0]},  {X_train["date"].min()} to {X_train["date"].max()}'
@@ -118,6 +121,7 @@ from sklearn.linear_model import Ridge
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.linear_model import PoissonRegressor
 
 
 date_encoder = FunctionTransformer(_encode_dates)
@@ -142,7 +146,7 @@ preprocessor = ColumnTransformer(
         ('location', 'passthrough', location_cols),
         ('numerical', 'passthrough', numerical_cols),
         #('lagged', 'passthrough', lagged_cols),
-        #('covid', 'passthrough', binary_cols)
+        ('covid', 'passthrough', binary_cols)
     ],
     #remainder='passthrough'
 )
@@ -150,34 +154,65 @@ preprocessor = ColumnTransformer(
 #Ridge, HistGradientBoostingRegressor
 #regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=500)
 #regressor = Ridge()
+#regressor = utils.GMM_eval(6)
+#regressor = PoissonRegressor()
 
-regressor = utils.GMM_eval(6)
+import tensorflow as tf
 
+input_shape = X_train.shape[1]
+input_shape = 174
+
+inputs = tf.keras.Input(shape=(input_shape,))
+# x = tf.keras.layers.Dense(128, activation='relu')(inputs)
+# x = tf.keras.layers.Dense(64, activation='relu')(x)
+# x = tf.keras.layers.Dense(32, activation='relu')(x)
+#outputs = tf.keras.layers.Dense(3)(x)  # Output for p, mu, and log(sigma)
+
+layers = [256, 64, 32]
+
+deep_model = tf.keras.Sequential([
+        *[tf.keras.layers.Dense(i, activation='relu') for i in layers],
+        *[tf.keras.layers.Dropout(0.1)],
+        *[tf.keras.layers.Dense(3)]
+    ])
+
+regressor = tf.keras.Model(inputs=inputs, outputs=deep_model(inputs))
+regressor.compile(optimizer='adam' , loss=utils.zero_inflated_lognormal_loss)
 
 print(f'Building with {regressor}')
 
-#pipe = make_pipeline(lag_transformer, date_encoder, preprocessor, regressor)
+pipe = make_pipeline(lag_transformer, date_encoder, preprocessor, regressor)
 
 pipe = Pipeline([
     #('lag_features', lag_transformer),
     ('date_encoder', date_encoder),
     ('preprocessor', preprocessor),
-    ('regressor', regressor)
+    #('regressor', regressor)
 ])
 
-pipe.fit(X_train, y_train, 
+transformed_x = pipe.fit_transform(X_train, y_train, 
          #regressor__sample_weight=weights
          )
 
-#print(f'lagged: {lag_transformer.get_feature_names_out()}')
+# Train the model
+regressor.fit(transformed_x, y_train, epochs=5, batch_size=32)
 
-y_val_pred = pipe.predict(X_valid)
+#print(f'lagged: {lag_transformer.get_feature_names_out()}')
+model_outputs = regressor.predict(pipe.transform(X_valid))
+print(model_outputs[:100])
+#y_val_pred = np.where(model_outputs[:, 0] > 0.7, 0, model_outputs[:, 1])
+y_val_pred = utils.zero_inflated_lognormal_pred(model_outputs)
+y_val_pred = np.array(y_val_pred).flatten()
+print(f'NAs in pred: {sum(np.isnan(y_val_pred))}')
+
+#y_val_pred = np.log(y_val_pred)
+#y_valid = np.log(y_valid)
 
 from sklearn.metrics import mean_squared_error
 print(f'rmse:{mean_squared_error(y_val_pred, y_valid)}')
 
-sns.scatterplot(x=y_valid, y=y_val_pred.flatten(), color='g', marker='.', alpha=0.2, label='Model')
-reference_x = np.linspace(min(y_valid) - 1, max(y_valid) + 1, 1200)
+sns.scatterplot(x=y_valid.flatten(), y=y_val_pred, color='g', marker='.', alpha=0.2, label='Model')
+reference_x = np.linspace(min(y_valid.flatten()) - 1, max(y_valid.flatten()) + 1, 1200)
 plt.plot(reference_x, reference_x, label='Ideal')
 plt.ylabel('Predicted y values')
 plt.xlabel('Actual y values')
@@ -205,7 +240,7 @@ plt.show()
 X_test = get_test_data()
 X_test = _merge_external_data(X_test)
 X_test = covid_dates(X_test)
-y_pred = pipe.predict(X_test)
+y_pred = np.log(pipe.predict(X_test))
 
 sol = {
     'Id': list(range(len(y_pred))),
