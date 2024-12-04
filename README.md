@@ -6,7 +6,8 @@
 
 4. DONE merge existing external data to the basic dataset - sam
 5. DONE Implement GMR, test it and make a submission - sam
-6. Inspect the test X distributions and the training X distributions - sam
+6. DONE Inspect the test X distributions and the training X distributions - sam (could try again)
+7. DONE Experiment with Poisson Regression, try implementing ZILN loss - sam
 
 # Goals
 
