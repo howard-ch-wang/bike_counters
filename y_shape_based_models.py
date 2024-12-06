@@ -7,6 +7,7 @@ import utils
 from external_data import example_estimator
 import seaborn as sns
 from feature_engine.timeseries.forecasting import LagFeatures
+np.random.seed(80)
 
 #helper functions
 
@@ -171,7 +172,7 @@ inputs = tf.keras.Input(shape=(input_shape,))
 #outputs = tf.keras.layers.Dense(3)(x)  # Output for p, mu, and log(sigma)
 
 deep_model = tf.keras.Sequential([
-    tf.keras.layers.Dense(16, activation='leaky_relu', kernel_initializer=HeNormal()),
+    tf.keras.layers.Dense(8, activation='leaky_relu', kernel_initializer=HeNormal()),
     #tf.keras.layers.Dropout(0.1),
     tf.keras.layers.Dense(4, activation='leaky_relu', kernel_initializer=HeNormal()),
     #tf.keras.layers.Dropout(0.1),
@@ -199,7 +200,7 @@ transformed_x = pipe.fit_transform(X_train, y_train,
          )
 
 # Train the model
-regressor.fit(transformed_x, y_train, epochs=16, batch_size=64)
+regressor.fit(transformed_x, y_train, epochs=5, batch_size=64)
 
 #print(f'lagged: {lag_transformer.get_feature_names_out()}')
 model_outputs = regressor.predict(pipe.transform(X_valid))
@@ -208,6 +209,7 @@ print(model_outputs[:100])
 y_val_pred = utils.zero_inflated_lognormal_pred(model_outputs)
 y_val_pred = np.array(y_val_pred).flatten()
 print(f'NAs in pred: {sum(np.isnan(y_val_pred))}')
+print(np.isinf(y_val_pred).any()) 
 
 #y_val_pred = np.log(y_val_pred)
 #y_valid = np.log(y_valid)
