@@ -7,7 +7,8 @@ import utils
 from external_data import example_estimator
 import seaborn as sns
 from feature_engine.timeseries.forecasting import LagFeatures
-
+import random
+random.seed(125)
 #helper functions
 
 def _merge_external_data(X):
@@ -89,16 +90,16 @@ def get_test_data(path="data/final_test.parquet"):
 
 #data = pd.read_parquet(Path("data") / "train.parquet")
 X, y = utils.get_train_data()
-X = _merge_external_data(X)
+#X = _merge_external_data(X)
 X = covid_dates(X)
 print(f'Data: {X.columns}')
 
 X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
-
-current_time = X_train['date'].max()
-time_diff = (current_time - X_train['date']).dt.days
+X_train, y_train = X, y #retraining on full dataset
 
 # Exponential decay weights
+current_time = X_train['date'].max()
+time_diff = (current_time - X_train['date']).dt.days
 decay_rate = 0.05  # Adjust this parameter
 weights = np.exp(-decay_rate * time_diff)
 
@@ -140,18 +141,18 @@ preprocessor = ColumnTransformer(
         #("install", OneHotEncoder(handle_unknown="ignore"), install_cols),
         ("cat", categorical_encoder, categorical_cols),
         ('location', 'passthrough', location_cols),
-        ('numerical', 'passthrough', numerical_cols),
+        #('numerical', 'passthrough', numerical_cols),
         #('lagged', 'passthrough', lagged_cols),
-        #('covid', 'passthrough', binary_cols)
+        ('covid', 'passthrough', binary_cols)
     ],
     #remainder='passthrough'
 )
 
 #Ridge, HistGradientBoostingRegressor
-#regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=500)
+regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=700)
 #regressor = Ridge()
 
-regressor = utils.GMM_eval(6)
+#regressor = utils.GMM_eval(8)
 
 
 print(f'Building with {regressor}')
@@ -172,6 +173,7 @@ pipe.fit(X_train, y_train,
 #print(f'lagged: {lag_transformer.get_feature_names_out()}')
 
 y_val_pred = pipe.predict(X_valid)
+#y_val_pred = np.where(y_val_pred < 0, 0, y_val_pred) #for GMM - this helps remove negative values
 
 from sklearn.metrics import mean_squared_error
 print(f'rmse:{mean_squared_error(y_val_pred, y_valid)}')
@@ -206,6 +208,7 @@ X_test = get_test_data()
 X_test = _merge_external_data(X_test)
 X_test = covid_dates(X_test)
 y_pred = pipe.predict(X_test)
+#y_pred = np.where(y_pred < 0, 0, y_pred)
 
 sol = {
     'Id': list(range(len(y_pred))),
@@ -214,7 +217,7 @@ sol = {
 
 submission = pd.DataFrame(sol)
 submission.set_index("Id", inplace=True)
-submission.to_csv('submission.csv')
+submission.to_csv('submission2.csv')
 
 
 # feature importances

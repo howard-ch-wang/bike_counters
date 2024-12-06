@@ -97,7 +97,7 @@ def zero_inflated_lognormal_loss(labels: tf.Tensor,
       positive * tfd.LogNormal(loc=loc, scale=scale).log_prob(safe_labels),
       axis=-1)
 
-  return classification_loss + regression_loss
+  return (classification_loss) + regression_loss
 
 def zero_inflated_lognormal_pred(logits: tf.Tensor) -> tf.Tensor:
   """Calculates predicted mean of zero inflated lognormal logits.
