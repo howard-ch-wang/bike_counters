@@ -7,10 +7,8 @@ import utils
 from external_data import example_estimator
 import seaborn as sns
 from feature_engine.timeseries.forecasting import LagFeatures
-#np.random.seed(80)
 import random
 random.seed(125)
-
 #helper functions
 
 def _merge_external_data(X):
@@ -92,16 +90,13 @@ def get_test_data(path="data/final_test.parquet"):
 
 #data = pd.read_parquet(Path("data") / "train.parquet")
 X, y = utils.get_train_data()
-y = y.reshape(-1, 1)
-print(y.shape)
-print(X.info())
-#y = np.exp(y)
-#X = _merge_external_data(X)
+X = _merge_external_data(X)
 X = covid_dates(X)
 print(f'Data: {X.columns}')
-print(X.info())
+
 X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
 X_train, y_train = X, y
+
 # current_time = X_train['date'].max()
 # time_diff = (current_time - X_train['date']).dt.days
 
@@ -125,7 +120,6 @@ from sklearn.linear_model import Ridge
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.linear_model import PoissonRegressor
 
 
 date_encoder = FunctionTransformer(_encode_dates)
@@ -158,73 +152,39 @@ preprocessor = ColumnTransformer(
 #Ridge, HistGradientBoostingRegressor
 #regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=500)
 #regressor = Ridge()
-#regressor = utils.GMM_eval(6)
-#regressor = PoissonRegressor()
 
-import tensorflow as tf
-from tensorflow.keras.initializers import HeNormal
+regressor = utils.GMM_eval(8)
 
-input_shape = X_train.shape[1]
-input_shape = 165
-
-inputs = tf.keras.Input(shape=(input_shape,))
-# x = tf.keras.layers.Dense(128, activation='relu')(inputs)
-# x = tf.keras.layers.Dense(64, activation='relu')(x)
-# x = tf.keras.layers.Dense(32, activation='relu')(x)
-#outputs = tf.keras.layers.Dense(3)(x)  # Output for p, mu, and log(sigma)
-
-deep_model = tf.keras.Sequential([
-    tf.keras.layers.Dense(16, activation='leaky_relu', kernel_initializer=HeNormal()),
-    #tf.keras.layers.Dropout(0.1),
-    tf.keras.layers.Dense(4, activation='leaky_relu', kernel_initializer=HeNormal()),
-    #tf.keras.layers.Dropout(0.1),
-    #tf.keras.layers.Dense(32, activation='relu'),
-    tf.keras.layers.Dense(3)  # Output layer
-    #tf.keras.layers.Concatenate()([tf.keras.layers.Dense(units=1, activation='sigmoid'), tf.keras.layers.Dense(units=2)])
-])
-regressor = tf.keras.Model(inputs=inputs, outputs=deep_model(inputs))
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
-regressor.compile(optimizer=optimizer , loss=utils.zero_inflated_lognormal_loss)
 
 print(f'Building with {regressor}')
 
-pipe = make_pipeline(lag_transformer, date_encoder, preprocessor, regressor)
+#pipe = make_pipeline(lag_transformer, date_encoder, preprocessor, regressor)
 
 pipe = Pipeline([
     #('lag_features', lag_transformer),
     ('date_encoder', date_encoder),
     ('preprocessor', preprocessor),
-    #('regressor', regressor)
+    ('regressor', regressor)
 ])
 
-transformed_x = pipe.fit_transform(X_train, y_train, 
+pipe.fit(X_train, y_train, 
          #regressor__sample_weight=weights
          )
 
-# Train the model
-regressor.fit(transformed_x, y_train, epochs=10, batch_size=64)
-
 #print(f'lagged: {lag_transformer.get_feature_names_out()}')
-model_outputs = regressor.predict(pipe.transform(X_valid))
-print(model_outputs[:100])
-#y_val_pred = np.where(model_outputs[:, 0] > 0.7, 0, model_outputs[:, 1])
-y_val_pred = utils.zero_inflated_lognormal_pred(model_outputs)
-y_val_pred = np.array(y_val_pred).flatten()
-print(f'NAs in pred: {sum(np.isnan(y_val_pred))}')
-print(np.isinf(y_val_pred).any()) 
 
-#y_val_pred = np.log(y_val_pred)
-#y_valid = np.log(y_valid)
+y_val_pred = pipe.predict(X_valid)
+y_val_pred = np.where(y_val_pred < 0, 0, y_val_pred) #for GMM - this helps remove negative values
 
 from sklearn.metrics import mean_squared_error
 print(f'rmse:{mean_squared_error(y_val_pred, y_valid)}')
 
-sns.scatterplot(x=y_valid.flatten(), y=y_val_pred, color='g', marker='.', alpha=0.1, label='Model')
-reference_x = np.linspace(min(y_valid.flatten()) - 1, max(y_valid.flatten()) + 1, 1200)
+sns.scatterplot(x=y_valid, y=y_val_pred.flatten(), color='g', marker='.', alpha=0.2, label='Model')
+reference_x = np.linspace(min(y_valid) - 1, max(y_valid) + 1, 1200)
 plt.plot(reference_x, reference_x, label='Ideal')
 plt.ylabel('Predicted y values')
 plt.xlabel('Actual y values')
-plt.title(f'Actual y vs Pred y')
+plt.title(f'Actual y vs Pred y - GMR')
 plt.legend()
 plt.show()
 
@@ -248,10 +208,8 @@ plt.show()
 X_test = get_test_data()
 X_test = _merge_external_data(X_test)
 X_test = covid_dates(X_test)
-y_pred = regressor.predict(pipe.transform(X_test))
-
-y_pred = utils.zero_inflated_lognormal_pred(y_pred)
-y_pred = np.array(y_pred).flatten()
+y_pred = pipe.predict(X_test)
+y_pred = np.where(y_pred < 0, 0, y_pred)
 
 sol = {
     'Id': list(range(len(y_pred))),
