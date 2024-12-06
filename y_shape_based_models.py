@@ -91,15 +91,16 @@ def get_test_data(path="data/final_test.parquet"):
 X, y = utils.get_train_data()
 y = y.reshape(-1, 1)
 print(y.shape)
+print(X.info())
 #y = np.exp(y)
 X = _merge_external_data(X)
 X = covid_dates(X)
 print(f'Data: {X.columns}')
-
+print(X.info())
 X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
 
-current_time = X_train['date'].max()
-time_diff = (current_time - X_train['date']).dt.days
+# current_time = X_train['date'].max()
+# time_diff = (current_time - X_train['date']).dt.days
 
 # # Exponential decay weights
 # decay_rate = 0.05  # Adjust this parameter
@@ -158,6 +159,7 @@ preprocessor = ColumnTransformer(
 #regressor = PoissonRegressor()
 
 import tensorflow as tf
+from tensorflow.keras.initializers import HeNormal
 
 input_shape = X_train.shape[1]
 input_shape = 174
@@ -168,16 +170,18 @@ inputs = tf.keras.Input(shape=(input_shape,))
 # x = tf.keras.layers.Dense(32, activation='relu')(x)
 #outputs = tf.keras.layers.Dense(3)(x)  # Output for p, mu, and log(sigma)
 
-layers = [256, 64, 32]
-
 deep_model = tf.keras.Sequential([
-        *[tf.keras.layers.Dense(i, activation='relu') for i in layers],
-        *[tf.keras.layers.Dropout(0.1)],
-        *[tf.keras.layers.Dense(3)]
-    ])
-
+    tf.keras.layers.Dense(16, activation='leaky_relu', kernel_initializer=HeNormal()),
+    #tf.keras.layers.Dropout(0.1),
+    tf.keras.layers.Dense(4, activation='leaky_relu', kernel_initializer=HeNormal()),
+    #tf.keras.layers.Dropout(0.1),
+    #tf.keras.layers.Dense(32, activation='relu'),
+    tf.keras.layers.Dense(3)  # Output layer
+    #tf.keras.layers.Concatenate()([tf.keras.layers.Dense(units=1, activation='sigmoid'), tf.keras.layers.Dense(units=2)])
+])
 regressor = tf.keras.Model(inputs=inputs, outputs=deep_model(inputs))
-regressor.compile(optimizer='adam' , loss=utils.zero_inflated_lognormal_loss)
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
+regressor.compile(optimizer=optimizer , loss=utils.zero_inflated_lognormal_loss)
 
 print(f'Building with {regressor}')
 
@@ -195,7 +199,7 @@ transformed_x = pipe.fit_transform(X_train, y_train,
          )
 
 # Train the model
-regressor.fit(transformed_x, y_train, epochs=5, batch_size=32)
+regressor.fit(transformed_x, y_train, epochs=16, batch_size=64)
 
 #print(f'lagged: {lag_transformer.get_feature_names_out()}')
 model_outputs = regressor.predict(pipe.transform(X_valid))
@@ -211,7 +215,7 @@ print(f'NAs in pred: {sum(np.isnan(y_val_pred))}')
 from sklearn.metrics import mean_squared_error
 print(f'rmse:{mean_squared_error(y_val_pred, y_valid)}')
 
-sns.scatterplot(x=y_valid.flatten(), y=y_val_pred, color='g', marker='.', alpha=0.2, label='Model')
+sns.scatterplot(x=y_valid.flatten(), y=y_val_pred, color='g', marker='.', alpha=0.1, label='Model')
 reference_x = np.linspace(min(y_valid.flatten()) - 1, max(y_valid.flatten()) + 1, 1200)
 plt.plot(reference_x, reference_x, label='Ideal')
 plt.ylabel('Predicted y values')
