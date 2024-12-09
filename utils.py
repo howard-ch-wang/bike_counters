@@ -75,7 +75,7 @@ def zero_inflated_lognormal_loss(labels: tf.Tensor,
     Zero inflated lognormal loss value.
   """
   labels = tf.convert_to_tensor(labels, dtype=tf.float32)
-  positive = tf.cast(labels > 0, tf.float32)
+  positive = tf.cast(labels > 0, tf.float32) #tried setting this to 1
 
   logits = tf.convert_to_tensor(logits, dtype=tf.float32)
   print(labels)
@@ -97,7 +97,7 @@ def zero_inflated_lognormal_loss(labels: tf.Tensor,
       positive * tfd.LogNormal(loc=loc, scale=scale).log_prob(safe_labels),
       axis=-1)
 
-  return (classification_loss) + regression_loss
+  return classification_loss + regression_loss #tried adjusting the weightage between these 2 losses.
 
 def zero_inflated_lognormal_pred(logits: tf.Tensor) -> tf.Tensor:
   """Calculates predicted mean of zero inflated lognormal logits.
