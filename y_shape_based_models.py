@@ -23,7 +23,7 @@ def _merge_external_data(X):
     # When using merge_asof left frame need to be sorted
     X["orig_index"] = np.arange(X.shape[0])
     X = pd.merge_asof(
-        X.sort_values("date"), df_ext[cols].sort_values("date"), on="date"
+        X.sort_values("date"), df_ext[cols].sort_values("date"), on="date",
     )
     #to add more columns, need to add in the merge line. 
     # Sort back to the original order
@@ -96,18 +96,20 @@ y = y.reshape(-1, 1)
 print(y.shape)
 print(X.info())
 #y = np.exp(y)
-#X = _merge_external_data(X)
+X = _merge_external_data(X)
 X = covid_dates(X)
 print(f'Data: {X.columns}')
 print(X.info())
 X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
-X_train, y_train = X, y
-# current_time = X_train['date'].max()
-# time_diff = (current_time - X_train['date']).dt.days
+#X_train, y_train = X, y
 
-# # Exponential decay weights
-# decay_rate = 0.05  # Adjust this parameter
-# weights = np.exp(-decay_rate * time_diff)
+#weighing more recent observations higher - because prediction is just after training.
+current_time = X_train['date'].max()
+time_diff = (current_time - X_train['date']).dt.days
+
+# Exponential decay weights
+decay_rate = 0.1  # Adjust this parameter
+weights = np.exp(-decay_rate * time_diff)
 
 print(
     f'Train: n_samples={X_train.shape[0]},  {X_train["date"].min()} to {X_train["date"].max()}'
@@ -126,6 +128,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.linear_model import PoissonRegressor
+from sklearn.impute import SimpleImputer
 
 
 date_encoder = FunctionTransformer(_encode_dates)
@@ -136,11 +139,17 @@ categorical_encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False
 categorical_cols = ["counter_name", "site_name"]
 binary_cols = ['in_date_range']
 location_cols = ['latitude', 'longitude']
-numerical_cols = ['t', 'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv']
+numerical_cols = ['t', 
+                  #'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv'
+                  ]
 lag_transformer = LagFeatures(variables=numerical_cols, periods=[24, 48], missing_values='ignore')
 
 #these are created later, can find these with get_features_out
-lagged_cols = ['t_lag_24', 'pmer_lag_24', 'tend_lag_24', 'cod_tend_lag_24', 'dd_lag_24', 'ff_lag_24', 'td_lag_24', 'u_lag_24', 'vv_lag_24', 't_lag_48', 'pmer_lag_48', 'tend_lag_48', 'cod_tend_lag_48', 'dd_lag_48', 'ff_lag_48', 'td_lag_48', 'u_lag_48', 'vv_lag_48']
+lagged_cols = ['t_lag_24', 
+               #'pmer_lag_24', 'tend_lag_24', 'cod_tend_lag_24', 'dd_lag_24', 'ff_lag_24', 'td_lag_24', 'u_lag_24', 'vv_lag_24', 
+               't_lag_48', 
+               #'pmer_lag_48', 'tend_lag_48', 'cod_tend_lag_48', 'dd_lag_48', 'ff_lag_48', 'td_lag_48', 'u_lag_48', 'vv_lag_48'
+               ]
 
 preprocessor = ColumnTransformer(
     [
@@ -165,7 +174,7 @@ import tensorflow as tf
 from tensorflow.keras.initializers import HeNormal
 
 input_shape = X_train.shape[1]
-input_shape = 165
+input_shape = 165 #this needs to be set based on the post processed data shape
 
 inputs = tf.keras.Input(shape=(input_shape,))
 # x = tf.keras.layers.Dense(128, activation='relu')(inputs)
@@ -174,9 +183,9 @@ inputs = tf.keras.Input(shape=(input_shape,))
 #outputs = tf.keras.layers.Dense(3)(x)  # Output for p, mu, and log(sigma)
 
 deep_model = tf.keras.Sequential([
-    tf.keras.layers.Dense(16, activation='leaky_relu', kernel_initializer=HeNormal()),
+    tf.keras.layers.Dense(32, activation='leaky_relu', kernel_initializer=HeNormal()),
     #tf.keras.layers.Dropout(0.1),
-    tf.keras.layers.Dense(4, activation='leaky_relu', kernel_initializer=HeNormal()),
+    tf.keras.layers.Dense(16, activation='leaky_relu', kernel_initializer=HeNormal()),
     #tf.keras.layers.Dropout(0.1),
     #tf.keras.layers.Dense(32, activation='relu'),
     tf.keras.layers.Dense(3)  # Output layer
@@ -194,15 +203,18 @@ pipe = Pipeline([
     #('lag_features', lag_transformer),
     ('date_encoder', date_encoder),
     ('preprocessor', preprocessor),
+    #('imputer', SimpleImputer())
     #('regressor', regressor)
 ])
 
-transformed_x = pipe.fit_transform(X_train, y_train, 
+transformed_x = pipe.fit_transform(X_train, 
          #regressor__sample_weight=weights
          )
 
+print(f'NAs in processde data: {sum(np.isnan(transformed_x))}')
+print(np.isinf(transformed_x).any()) 
 # Train the model
-regressor.fit(transformed_x, y_train, epochs=10, batch_size=64)
+regressor.fit(transformed_x, y_train, epochs=20, batch_size=64, sample_weight=weights)
 
 #print(f'lagged: {lag_transformer.get_feature_names_out()}')
 model_outputs = regressor.predict(pipe.transform(X_valid))
