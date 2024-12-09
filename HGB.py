@@ -96,7 +96,7 @@ X = covid_dates(X)
 print(f'Data: {X.columns}')
 
 X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
-#X_train, y_train = X, y #retraining on full dataset
+X_train, y_train = X, y #retraining on full dataset
 
 # Exponential decay weights
 current_time = X_train['date'].max()
@@ -189,18 +189,18 @@ print(f'rmse:{mean_squared_error(y_val_pred, y_valid)}')
 # plt.show()
 
 #cross validation
-from sklearn.model_selection import TimeSeriesSplit, cross_val_score
+# from sklearn.model_selection import TimeSeriesSplit, cross_val_score
 
-cv = TimeSeriesSplit(n_splits=6)
+# cv = TimeSeriesSplit(n_splits=6)
 
-# When using a scorer in scikit-learn it always needs to be better when smaller, hence the minus sign.
-scores = cross_val_score(
-    pipe, X_train, y_train, cv=cv, scoring="neg_root_mean_squared_error"
-)
-print("RMSE: ", scores)
-print(f"RMSE (all folds): {-scores.mean():.3} ± {(-scores).std():.3}")
+# # When using a scorer in scikit-learn it always needs to be better when smaller, hence the minus sign.
+# scores = cross_val_score(
+#     pipe, X_train, y_train, cv=cv, scoring="neg_root_mean_squared_error"
+# )
+# print("RMSE: ", scores)
+# print(f"RMSE (all folds): {-scores.mean():.3} ± {(-scores).std():.3}")
 
-print('success')
+# print('success')
 
 
 #getting the test data, making the predictions
