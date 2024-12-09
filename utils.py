@@ -109,12 +109,14 @@ def zero_inflated_lognormal_pred(logits: tf.Tensor) -> tf.Tensor:
     preds: [batch_size, 1] tensor of predicted mean.
   """
   logits = tf.convert_to_tensor(logits, dtype=tf.float32)
-  positive_probs = tf.keras.backend.sigmoid(logits[..., :1])
+  positive_probs = tf.keras.backend.sigmoid(logits[..., :1]) #can try setting this to a more strict logic
+  #print(positive_probs)
+  #positive_probs = tf.where(positive_probs < 0.8, tf.zeros_like(positive_probs), positive_probs)
   loc = logits[..., 1:2]
   scale = tf.keras.backend.softplus(logits[..., 2:])
   preds = (
       positive_probs *
-      tf.keras.backend.exp(loc + 0.5 * tf.keras.backend.square(scale)))
+      tf.keras.backend.exp(loc + 0.5 * tf.keras.backend.square(scale))) 
   return preds
 
 

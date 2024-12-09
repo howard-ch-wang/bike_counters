@@ -24,7 +24,7 @@ def _merge_external_data(X):
         .groupby("date")
         .mean()
         .dropna(axis=1, how="all")
-        .interpolate(method="linear")
+        .interpolate(method="linear") #test with and without
     )
 
     weather["is_rain"] = (weather["RR1"] > 0).astype(int)
@@ -36,8 +36,8 @@ def _merge_external_data(X):
     return X
 
 
-X, y = utils.get_train_data()
-print(X.head())
+# X, y = utils.get_train_data()
+# #print(X.head())
 
-X = _merge_external_data(X)
-print(X)
+# X = _merge_external_data(X)
+# print(X)
