@@ -8,26 +8,27 @@ from external_data import example_estimator
 import seaborn as sns
 from feature_engine.timeseries.forecasting import LagFeatures
 import random
+from test_features import _merge_external_data
 random.seed(125)
 #helper functions
 
-def _merge_external_data(X):
-    file_path = "/Users/sam/Desktop/X/P4DS/p4ds_sam/bike_counters/data/external_data.csv"
-    df_ext = pd.read_csv(file_path, parse_dates=["date"])
-    df_ext['date'] = df_ext['date'].astype('datetime64[us]') #small date incompatibility
+# def _merge_external_data(X):
+#     file_path = "/Users/sam/Desktop/X/P4DS/p4ds_sam/bike_counters/data/external_data.csv"
+#     df_ext = pd.read_csv(file_path, parse_dates=["date"])
+#     df_ext['date'] = df_ext['date'].astype('datetime64[us]') #small date incompatibility
 
-    cols = ['date', 't', 'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv']
-    X = X.copy()
-    # When using merge_asof left frame need to be sorted
-    X["orig_index"] = np.arange(X.shape[0])
-    X = pd.merge_asof(
-        X.sort_values("date"), df_ext[cols].sort_values("date"), on="date"
-    )
-    #to add more columns, need to add in the merge line. 
-    # Sort back to the original order
-    X = X.sort_values("orig_index")
-    del X["orig_index"]
-    return X
+#     cols = ['date', 't', 'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv']
+#     X = X.copy()
+#     # When using merge_asof left frame need to be sorted
+#     X["orig_index"] = np.arange(X.shape[0])
+#     X = pd.merge_asof(
+#         X.sort_values("date"), df_ext[cols].sort_values("date"), on="date"
+#     )
+#     #to add more columns, need to add in the merge line. 
+#     # Sort back to the original order
+#     X = X.sort_values("orig_index")
+#     del X["orig_index"]
+#     return X
 
 def _encode_dates(X, cols=['date']):
     X = X.copy()  # modify a copy of X
@@ -90,7 +91,7 @@ def get_test_data(path="data/final_test.parquet"):
 
 #data = pd.read_parquet(Path("data") / "train.parquet")
 X, y = utils.get_train_data()
-#X = _merge_external_data(X)
+X = _merge_external_data(X)
 X = covid_dates(X)
 print(f'Data: {X.columns}')
 
@@ -127,13 +128,13 @@ date_cols = _encode_dates(X_train[["date"]]).columns.tolist()
 
 categorical_encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 categorical_cols = ["counter_name", "site_name"]
-binary_cols = ['in_date_range']
+binary_cols = ['in_date_range', 'is_rain', 'is_snow']
 location_cols = ['latitude', 'longitude']
-numerical_cols = ['t', 'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv']
+numerical_cols = ['RR1', 'FF', 'T', 'TD', 'U', 'NEIGETOT']
 lag_transformer = LagFeatures(variables=numerical_cols, periods=[24, 48], missing_values='ignore')
 
 #these are created later, can find these with get_features_out
-lagged_cols = ['t_lag_24', 'pmer_lag_24', 'tend_lag_24', 'cod_tend_lag_24', 'dd_lag_24', 'ff_lag_24', 'td_lag_24', 'u_lag_24', 'vv_lag_24', 't_lag_48', 'pmer_lag_48', 'tend_lag_48', 'cod_tend_lag_48', 'dd_lag_48', 'ff_lag_48', 'td_lag_48', 'u_lag_48', 'vv_lag_48']
+#lagged_cols = ['t_lag_24', 'pmer_lag_24', 'tend_lag_24', 'cod_tend_lag_24', 'dd_lag_24', 'ff_lag_24', 'td_lag_24', 'u_lag_24', 'vv_lag_24', 't_lag_48', 'pmer_lag_48', 'tend_lag_48', 'cod_tend_lag_48', 'dd_lag_48', 'ff_lag_48', 'td_lag_48', 'u_lag_48', 'vv_lag_48']
 
 preprocessor = ColumnTransformer(
     [
@@ -141,15 +142,15 @@ preprocessor = ColumnTransformer(
         #("install", OneHotEncoder(handle_unknown="ignore"), install_cols),
         ("cat", categorical_encoder, categorical_cols),
         ('location', 'passthrough', location_cols),
-        #('numerical', 'passthrough', numerical_cols),
+        ('numerical', 'passthrough', numerical_cols),
         #('lagged', 'passthrough', lagged_cols),
-        ('covid', 'passthrough', binary_cols)
+        ('binary', 'passthrough', binary_cols)
     ],
     #remainder='passthrough'
 )
 
 #Ridge, HistGradientBoostingRegressor
-regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=700)
+regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=0, max_iter=700)
 #regressor = Ridge()
 
 #regressor = utils.GMM_eval(8)
@@ -178,16 +179,16 @@ y_val_pred = pipe.predict(X_valid)
 from sklearn.metrics import mean_squared_error
 print(f'rmse:{mean_squared_error(y_val_pred, y_valid)}')
 
-sns.scatterplot(x=y_valid, y=y_val_pred.flatten(), color='g', marker='.', alpha=0.2, label='Model')
-reference_x = np.linspace(min(y_valid) - 1, max(y_valid) + 1, 1200)
-plt.plot(reference_x, reference_x, label='Ideal')
-plt.ylabel('Predicted y values')
-plt.xlabel('Actual y values')
-plt.title(f'Actual y vs Pred y - GMR')
-plt.legend()
-plt.show()
+# sns.scatterplot(x=y_valid, y=y_val_pred.flatten(), color='g', marker='.', alpha=0.2, label='Model')
+# reference_x = np.linspace(min(y_valid) - 1, max(y_valid) + 1, 1200)
+# plt.plot(reference_x, reference_x, label='Ideal')
+# plt.ylabel('Predicted y values')
+# plt.xlabel('Actual y values')
+# plt.title(f'Actual y vs Pred y - GMR')
+# plt.legend()
+# plt.show()
 
-# #cross validation
+#cross validation
 # from sklearn.model_selection import TimeSeriesSplit, cross_val_score
 
 # cv = TimeSeriesSplit(n_splits=6)
