@@ -3,32 +3,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import sklearn
 from pathlib import Path
-import utils
-from external_data import example_estimator
 import seaborn as sns
 from feature_engine.timeseries.forecasting import LagFeatures
 import random
-from test_features import _merge_external_data, create_features
 random.seed(125)
-#helper functions
 
-# def _merge_external_data(X):
-#     file_path = "/Users/sam/Desktop/X/P4DS/p4ds_sam/bike_counters/data/external_data.csv"
-#     df_ext = pd.read_csv(file_path, parse_dates=["date"])
-#     df_ext['date'] = df_ext['date'].astype('datetime64[us]') #small date incompatibility
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import Ridge
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
+from sklearn.pipeline import Pipeline, make_pipeline
 
-#     cols = ['date', 't', 'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv']
-#     X = X.copy()
-#     # When using merge_asof left frame need to be sorted
-#     X["orig_index"] = np.arange(X.shape[0])
-#     X = pd.merge_asof(
-#         X.sort_values("date"), df_ext[cols].sort_values("date"), on="date"
-#     )
-#     #to add more columns, need to add in the merge line. 
-#     # Sort back to the original order
-#     X = X.sort_values("orig_index")
-#     del X["orig_index"]
-#     return X
+# --------- HELPER FUNCTIONS --------------#
+
 
 def _encode_dates(X, cols=['date']):
     X = X.copy()  # modify a copy of X
@@ -54,7 +41,7 @@ def train_test_split_temporal(X, y, delta_threshold="30 days"):
 
 def covid_dates(df):
 
-    '''Creates a binary variable - 1 if that observation happened during a lockdown in paris and 0 otherwise
+    '''Creates a binary variable 'in_date_range' - 1 if that observation happened during a lockdown in paris and 0 otherwise
     '''
 
     X = df.copy()
@@ -78,50 +65,72 @@ def covid_dates(df):
     X["in_date_range"] = X["date"].apply(lambda x: is_in_date_range(x, date_ranges))
     return X
 
-
 def get_test_data(path="data/final_test.parquet"):
     data = pd.read_parquet(path)
-    # Sort by date first, so that time based cross-validation would produce correct results
-    #data = data.sort_values(["date", "counter_name"])
     X_test = data.copy()
     return X_test
 
+def get_train_data(path="data/train.parquet"):
+    #problem_title = "Bike count prediction"
+    _target_column_name = "log_bike_count"
+    data = pd.read_parquet(path)
+    # Sort by date first, so that time based cross-validation would produce correct results
+    data = data.sort_values(["date", "counter_name"])
+    y_array = data[_target_column_name].values
+    X_df = data.drop([_target_column_name, "bike_count"], axis=1)
+    return X_df, y_array
 
-#load the data
+def _merge_external_data(X):
+    df = pd.read_csv(
+        "data/H_75_previous-2020-2022.csv.gz",
+        parse_dates=["AAAAMMJJHH"],
+        date_format="%Y%m%d%H",
+        compression="gzip",
+        sep=";",
+    ).rename(columns={"AAAAMMJJHH": "date"})
 
-#data = pd.read_parquet(Path("data") / "train.parquet")
-X, y = utils.get_train_data()
+    df = df[
+        (df["date"] >= df["date"].min())
+        & (df["date"] <= df["date"].max())
+    ]
+
+    weather = (
+        df.drop(columns=["NUM_POSTE", "NOM_USUEL", "LAT", "LON", "QDXI3S"])
+        .groupby("date")
+        .mean()
+        .dropna(axis=1, how="all")
+        .interpolate(method="linear") #test with and without
+    )
+
+    q_indicators = [col for col in weather.columns if col.startswith('Q')]
+    w_values = weather.drop(columns=q_indicators)
+
+    cols = ['RR1', 'DRR1', 'FF', 'FXY', 'FXI', 'FXI3S', 
+            'T', 'TD', 'TN', 'TX', 'DG', 'U', 'UX', 'DHUMI40',
+            'DHUMI80', 'INS', 'VV', 'DVV200', 'NEIGETOT']
+    # cols = w_values.columns
+
+    X = X.merge(w_values[cols], on='date', how='left')
+    return X
+
+def create_features(X):
+    X["is_rain"] = (X["RR1"] > 0).astype(int)
+    X['is_snow'] = (X['NEIGETOT'] > 0).astype(int)
+    X['wind_chill'] = 13.12 + 0.6215 * X['T'] - 11.37 * (X['FF']*3.6)**0.16 + 0.3965 * X['T'] * (X['FF']*3.6)**0.16
+    X['is_rush_hour'] = (
+        (X['date'].dt.hour >= 8) & (X['date'].dt.hour < 10) | 
+        (X['date'].dt.hour >= 17) & (X['date'].dt.hour < 20)
+    ).astype(int)
+
+    return X
+
+#-------------- DATA and MODEL Loading -------------#
+
+X, y = get_train_data()
 X = _merge_external_data(X)
 X = covid_dates(X)
 X = create_features(X)
-print(f'Data: {X.columns}')
-
-X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
 X_train, y_train = X, y #retraining on full dataset
-
-# Exponential decay weights
-current_time = X_train['date'].max()
-time_diff = (current_time - X_train['date']).dt.days
-decay_rate = 0.05  # Adjust this parameter
-weights = np.exp(-decay_rate * time_diff)
-
-print(
-    f'Train: n_samples={X_train.shape[0]},  {X_train["date"].min()} to {X_train["date"].max()}'
-)
-print(
-    f'Valid: n_samples={X_valid.shape[0]},  {X_valid["date"].min()} to {X_valid["date"].max()}'
-)
-
-
-#Model setup 
-#make sparse output = true for non GB reg models - it's faster
-
-from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import Ridge
-from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
-from sklearn.pipeline import Pipeline, make_pipeline
-
 
 date_encoder = FunctionTransformer(_encode_dates)
 #make sure to pass any date columns here as well
@@ -146,6 +155,8 @@ lagged_cols = [
     'NEIGETOT_lag_24',
     #           'RR1_lag_48', 'FF_lag_48', 'T_lag_48', 'TD_lag_48', 'U_lag_48', 
     'NEIGETOT_lag_48']
+
+#Choose which features to include at this stage
 preprocessor = ColumnTransformer(
     [
         ("date", OneHotEncoder(handle_unknown="ignore", sparse_output=False), date_cols),
@@ -159,16 +170,10 @@ preprocessor = ColumnTransformer(
     #remainder='passthrough'
 )
 
-#Ridge, HistGradientBoostingRegressor
 regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=2000)
-#regressor = Ridge()
-
-#regressor = utils.GMM_eval(8)
-
-
 print(f'Building with {regressor}')
 
-#pipe = make_pipeline(lag_transformer, date_encoder, preprocessor, regressor)
+#---------------------TRAINING---------------#
 
 pipe = Pipeline([
     #('lag_features', lag_transformer),
@@ -181,39 +186,9 @@ pipe.fit(X_train, y_train,
          #regressor__sample_weight=weights
          )
 
-#print(f'lagged: {lag_transformer.get_feature_names_out()}')
 
-y_val_pred = pipe.predict(X_valid)
-#y_val_pred = np.where(y_val_pred < 0, 0, y_val_pred) #for GMM - this helps remove negative values
+#---------------PREDICTION------------------#
 
-from sklearn.metrics import mean_squared_error
-print(f'rmse:{mean_squared_error(y_val_pred, y_valid)}')
-
-# sns.scatterplot(x=y_valid, y=y_val_pred.flatten(), color='g', marker='.', alpha=0.2, label='Model')
-# reference_x = np.linspace(min(y_valid) - 1, max(y_valid) + 1, 1200)
-# plt.plot(reference_x, reference_x, label='Ideal')
-# plt.ylabel('Predicted y values')
-# plt.xlabel('Actual y values')
-# plt.title(f'Actual y vs Pred y - GMR')
-# plt.legend()
-# plt.show()
-
-# #cross validation
-# from sklearn.model_selection import TimeSeriesSplit, cross_val_score
-
-# cv = TimeSeriesSplit(n_splits=6)
-
-# # When using a scorer in scikit-learn it always needs to be better when smaller, hence the minus sign.
-# scores = cross_val_score(
-#     pipe, X_train, y_train, cv=cv, scoring="neg_root_mean_squared_error"
-# )
-# print("RMSE: ", scores)
-# print(f"RMSE (all folds): {-scores.mean():.3} ± {(-scores).std():.3}")
-
-# print('success')
-
-
-#getting the test data, making the predictions
 
 X_test = get_test_data()
 X_test = _merge_external_data(X_test)
@@ -229,10 +204,4 @@ sol = {
 
 submission = pd.DataFrame(sol)
 submission.set_index("Id", inplace=True)
-submission.to_csv('submission2.csv')
-
-
-# feature importances
-print(pipe.steps)
-#feature_names = pipe.steps[2][1].get_feature_names_out()
-#print("Features after preprocessing:", feature_names)
+submission.to_csv('submission.csv')
