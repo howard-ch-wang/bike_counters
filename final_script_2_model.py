@@ -171,8 +171,8 @@ preprocessor = ColumnTransformer(
     #remainder='passthrough'
 )
 
-regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=500)
-classifier = HistGradientBoostingClassifier(max_leaf_nodes=50, verbose=1, max_iter=500)
+regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=5000)
+classifier = HistGradientBoostingClassifier(max_leaf_nodes=50, verbose=1, max_iter=5000)
 print(f'Building with {regressor} and {classifier}')
 
 #---------------------TRAINING---------------#
@@ -209,8 +209,8 @@ y_pred = pipe.predict(X_test)
 #y_pred = np.where(y_pred < 0, 0, y_pred)
 y_class = pipe_class.predict_proba(X_test)[:, 0]
 
-y_out = np.where(y_class > 0.7, 0, y_pred)
-
+#y_out = np.where(y_class > 0.6, 0, y_pred)
+y_out = (1 - y_class) * y_pred
 sol = {
     'Id': list(range(len(y_pred))),
     'log_bike_count': y_out.flatten()
