@@ -7,29 +7,30 @@ import utils
 from external_data import example_estimator
 import seaborn as sns
 from feature_engine.timeseries.forecasting import LagFeatures
+from test_features import _merge_external_data, create_features
 #np.random.seed(80)
 import random
 random.seed(125)
 
 #helper functions
 
-def _merge_external_data(X):
-    file_path = "/Users/sam/Desktop/X/P4DS/p4ds_sam/bike_counters/data/external_data.csv"
-    df_ext = pd.read_csv(file_path, parse_dates=["date"])
-    df_ext['date'] = df_ext['date'].astype('datetime64[us]') #small date incompatibility
+# def _merge_external_data(X):
+#     file_path = "/Users/sam/Desktop/X/P4DS/p4ds_sam/bike_counters/data/external_data.csv"
+#     df_ext = pd.read_csv(file_path, parse_dates=["date"])
+#     df_ext['date'] = df_ext['date'].astype('datetime64[us]') #small date incompatibility
 
-    cols = ['date', 't', 'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv']
-    X = X.copy()
-    # When using merge_asof left frame need to be sorted
-    X["orig_index"] = np.arange(X.shape[0])
-    X = pd.merge_asof(
-        X.sort_values("date"), df_ext[cols].sort_values("date"), on="date",
-    )
-    #to add more columns, need to add in the merge line. 
-    # Sort back to the original order
-    X = X.sort_values("orig_index")
-    del X["orig_index"]
-    return X
+#     cols = ['date', 't', 'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv']
+#     X = X.copy()
+#     # When using merge_asof left frame need to be sorted
+#     X["orig_index"] = np.arange(X.shape[0])
+#     X = pd.merge_asof(
+#         X.sort_values("date"), df_ext[cols].sort_values("date"), on="date",
+#     )
+#     #to add more columns, need to add in the merge line. 
+#     # Sort back to the original order
+#     X = X.sort_values("orig_index")
+#     del X["orig_index"]
+#     return X
 
 def _encode_dates(X, cols=['date']):
     X = X.copy()  # modify a copy of X
@@ -98,17 +99,18 @@ print(X.info())
 #y = np.exp(y)
 X = _merge_external_data(X)
 X = covid_dates(X)
+X = create_features(X)
 print(f'Data: {X.columns}')
 print(X.info())
 X_train, y_train, X_valid, y_valid = train_test_split_temporal(X, y)
-#X_train, y_train = X, y
+X_train, y_train = X, y
 
 #weighing more recent observations higher - because prediction is just after training.
 current_time = X_train['date'].max()
 time_diff = (current_time - X_train['date']).dt.days
 
 # Exponential decay weights
-decay_rate = 0.1  # Adjust this parameter
+decay_rate = 0.05  # Adjust this parameter
 weights = np.exp(-decay_rate * time_diff)
 
 print(
@@ -137,19 +139,18 @@ date_cols = _encode_dates(X_train[["date"]]).columns.tolist()
 
 categorical_encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 categorical_cols = ["counter_name", "site_name"]
-binary_cols = ['in_date_range']
+binary_cols = ['in_date_range', 'is_rain', 'is_snow', 'is_rush_hour']
 location_cols = ['latitude', 'longitude']
-numerical_cols = ['t', 
-                  #'pmer', 'tend', 'cod_tend', 'dd', 'ff', 'td', 'u', 'vv'
-                  ]
-lag_transformer = LagFeatures(variables=numerical_cols, periods=[24, 48], missing_values='ignore')
+numerical_cols_lag = ['RR1', 'FF', 'T', 'TD', 'U', 'NEIGETOT']
+numerical_cols = ['T', 'NEIGETOT']
+#numerical_cols = ['RR1', 'DRR1', 'FF', 'FXY', 'FXI', 'FXI3S', 
+            # 'T', 'TD', 'TN', 'TX', 'DG', 'U', 'UX', 'DHUMI40',
+            # 'DHUMI80', 'INS', 'VV', 'DVV200', 'NEIGETOT', 'wind_chill']
+lag_transformer = LagFeatures(variables=numerical_cols_lag, periods=[24, 48], missing_values='ignore')
 
 #these are created later, can find these with get_features_out
-lagged_cols = ['t_lag_24', 
-               #'pmer_lag_24', 'tend_lag_24', 'cod_tend_lag_24', 'dd_lag_24', 'ff_lag_24', 'td_lag_24', 'u_lag_24', 'vv_lag_24', 
-               't_lag_48', 
-               #'pmer_lag_48', 'tend_lag_48', 'cod_tend_lag_48', 'dd_lag_48', 'ff_lag_48', 'td_lag_48', 'u_lag_48', 'vv_lag_48'
-               ]
+#lagged_cols = ['RR1_lag_24', 'FF_lag_24', 'T_lag_24', 'TD_lag_24', 'U_lag_24', 'NEIGETOT_lag_24',
+#               'RR1_lag_48', 'FF_lag_48', 'T_lag_48', 'TD_lag_48', 'U_lag_48', 'NEIGETOT_lag_48']
 
 preprocessor = ColumnTransformer(
     [
@@ -157,7 +158,7 @@ preprocessor = ColumnTransformer(
         #("install", OneHotEncoder(handle_unknown="ignore"), install_cols),
         ("cat", categorical_encoder, categorical_cols),
         ('location', 'passthrough', location_cols),
-        #('numerical', 'passthrough', numerical_cols),
+        ('numerical', 'passthrough', numerical_cols),
         #('lagged', 'passthrough', lagged_cols),
         ('covid', 'passthrough', binary_cols)
     ],
@@ -174,7 +175,7 @@ import tensorflow as tf
 from tensorflow.keras.initializers import HeNormal
 
 input_shape = X_train.shape[1]
-input_shape = 165 #this needs to be set based on the post processed data shape
+input_shape = 170 #this needs to be set based on the post processed data shape
 
 inputs = tf.keras.Input(shape=(input_shape,))
 # x = tf.keras.layers.Dense(128, activation='relu')(inputs)
@@ -183,8 +184,9 @@ inputs = tf.keras.Input(shape=(input_shape,))
 #outputs = tf.keras.layers.Dense(3)(x)  # Output for p, mu, and log(sigma)
 
 deep_model = tf.keras.Sequential([
+    #tf.keras.layers.Dense(64, activation='leaky_relu', kernel_initializer=HeNormal()),
     tf.keras.layers.Dense(32, activation='leaky_relu', kernel_initializer=HeNormal()),
-    #tf.keras.layers.Dropout(0.1),
+    tf.keras.layers.Dropout(0.1),
     tf.keras.layers.Dense(16, activation='leaky_relu', kernel_initializer=HeNormal()),
     #tf.keras.layers.Dropout(0.1),
     #tf.keras.layers.Dense(32, activation='relu'),
@@ -214,7 +216,9 @@ transformed_x = pipe.fit_transform(X_train,
 print(f'NAs in processde data: {sum(np.isnan(transformed_x))}')
 print(np.isinf(transformed_x).any()) 
 # Train the model
-regressor.fit(transformed_x, y_train, epochs=20, batch_size=64, sample_weight=weights)
+regressor.fit(transformed_x, y_train, epochs=20, batch_size=64, 
+              #sample_weight=weights
+              )
 
 #print(f'lagged: {lag_transformer.get_feature_names_out()}')
 model_outputs = regressor.predict(pipe.transform(X_valid))
@@ -260,6 +264,7 @@ plt.show()
 X_test = get_test_data()
 X_test = _merge_external_data(X_test)
 X_test = covid_dates(X_test)
+X_test = create_features(X_test)
 y_pred = regressor.predict(pipe.transform(X_test))
 
 y_pred = utils.zero_inflated_lognormal_pred(y_pred)

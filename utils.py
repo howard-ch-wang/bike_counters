@@ -35,25 +35,6 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
 
-def ziln_loss(y_true, y_pred):
-    # Extract the predicted probabilities and count predictions
-    p_pred = y_pred[:, 0]  # Probability of zero
-    mu_pred = y_pred[:, 1]  # Mean of the count distribution
-    sigma_pred = tf.exp(y_pred[:, 2])  # Standard deviation (use exp for stability)
-
-    print(p_pred, mu_pred, sigma_pred)
-
-    # Calculate the loss components
-    zero_inflation_loss = -tf.reduce_mean(y_true * tf.math.log(p_pred) + (1 - y_true) * tf.math.log(1 - p_pred))
-    count_loss = -tf.reduce_mean(tfp.distributions.Normal(mu_pred, sigma_pred).log_prob(y_true))
-
-    # Combine the two loss components
-    total_loss = zero_inflation_loss + count_loss
-
-    print(total_loss, zero_inflation_loss, count_loss)
-
-    return total_loss
-
 
 #https://github.com/google/lifetime_value/blob/master/lifetime_value/zero_inflated_lognormal.py
 def zero_inflated_lognormal_loss(labels: tf.Tensor,
@@ -109,9 +90,10 @@ def zero_inflated_lognormal_pred(logits: tf.Tensor) -> tf.Tensor:
     preds: [batch_size, 1] tensor of predicted mean.
   """
   logits = tf.convert_to_tensor(logits, dtype=tf.float32)
+  #positive_probs = tf.where(logits[..., :1] < 0, tf.zeros_like(logits[..., :1]), tf.keras.backend.sigmoid(logits[..., :1]))
   positive_probs = tf.keras.backend.sigmoid(logits[..., :1]) #can try setting this to a more strict logic
   #print(positive_probs)
-  #positive_probs = tf.where(positive_probs < 0.8, tf.zeros_like(positive_probs), positive_probs)
+  #positive_probs = tf.where(positive_probs < 0, tf.zeros_like(positive_probs), positive_probs)
   loc = logits[..., 1:2]
   scale = tf.keras.backend.softplus(logits[..., 2:])
   preds = (
