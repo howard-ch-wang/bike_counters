@@ -1,3 +1,20 @@
+# %% [code]
+# %% [code]
+
+#------------------- RATIONALE SUMMARY ---------#
+
+#Given the distribution and high number of 0 values, this script trains a Regressor and Classifier.
+#their outputs are combined with the following logic: 
+#if classifier is 70% sure of 0, return 0, else return regressor's prediction
+
+#We use limited features based on the original dataset, and few categorical variables from the weather dataset
+# link to external dataset: https://www.data.gouv.fr/fr/datasets/r/a77b4d44-d361-4e59-b6cc-cbbf435a2d89, by Météo-France
+
+#This script does not include the experimentation and various models, features and approaches we tried, parameter tuning, 
+#please refer to the scripts in https://github.com/howard-ch-wang/bike_counters, and our report for those details
+
+#------------------ IMPORTS ------------------#
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,8 +33,21 @@ from sklearn.pipeline import Pipeline, make_pipeline
 
 # --------- HELPER FUNCTIONS --------------#
 
-
+#from the given code in the repo
 def _encode_dates(X, cols=['date']):
+
+    """
+    Extracts and encodes date-related features from specified date columns in a DataFrame.
+
+    Args:
+        X (pd.DataFrame): The input DataFrame containing date columns.
+        cols (list of str, optional): List of column names to encode. Defaults to ['date'].
+
+    Returns:
+        pd.DataFrame: A new DataFrame with encoded year, month, day, weekday, and hour for each date column, 
+                      and without the original date columns.
+    """
+    
     X = X.copy()  # modify a copy of X
     # Encode the date information from the DateOfDeparture columns
     for time_col in cols:
@@ -31,6 +61,18 @@ def _encode_dates(X, cols=['date']):
     return X.drop(columns=cols)
 
 def train_test_split_temporal(X, y, delta_threshold="30 days"):
+
+    """
+    Splits data into temporal training and validation sets based on a cutoff date.
+
+    Args:
+        X (pd.DataFrame): Feature DataFrame containing a 'date' column.
+        y (pd.Series or np.ndarray): Target variable corresponding to X.
+        delta_threshold (str, optional): Time delta defining the validation set period. Defaults to "30 days".
+
+    Returns:
+        tuple: (X_train, y_train, X_valid, y_valid), where each is a subset of the data.
+    """
     
     cutoff_date = X["date"].max() - pd.Timedelta(delta_threshold)
     mask = (X["date"] <= cutoff_date)
@@ -41,11 +83,20 @@ def train_test_split_temporal(X, y, delta_threshold="30 days"):
 
 def covid_dates(df):
 
-    '''Creates a binary variable 'in_date_range' - 1 if that observation happened during a lockdown in paris and 0 otherwise
-    '''
+    """
+    Adds a binary column indicating whether each observation falls within predefined lockdown date ranges in Paris.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame containing a 'date' column.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with an added 'in_date_range' column.
+    """
 
     X = df.copy()
 
+
+    #based on: https://en.wikipedia.org/wiki/COVID-19_pandemic_in_France
     date_ranges = [
     #("2020-03-17", "2020-05-11"),
     ("2020-10-05", "2020-12-14"),
@@ -65,12 +116,35 @@ def covid_dates(df):
     X["in_date_range"] = X["date"].apply(lambda x: is_in_date_range(x, date_ranges))
     return X
 
-def get_test_data(path="data/final_test.parquet"):
+def get_test_data(path="/kaggle/input/msdb-2024/final_test.parquet"):
+
+    """
+    Loads and returns the test dataset from a specified file path.
+
+    Args:
+        path (str, optional): Path to the test data file. Defaults to "/kaggle/input/msdb-2024/final_test.parquet".
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the test data.
+    """
+    
     data = pd.read_parquet(path)
     X_test = data.copy()
     return X_test
 
-def get_train_data(path="data/train.parquet"):
+#from given starter code in repo
+def get_train_data(path="/kaggle/input/msdb-2024/train.parquet"):
+
+    """
+    Loads and prepares the training dataset for analysis or modeling.
+
+    Args:
+        path (str, optional): Path to the training data file. Defaults to "/kaggle/input/msdb-2024/train.parquet".
+
+    Returns:
+        tuple: (X_df, y_array), where X_df is the feature DataFrame, and y_array is the target variable array.
+    """
+    
     #problem_title = "Bike count prediction"
     _target_column_name = "log_bike_count"
     data = pd.read_parquet(path)
@@ -80,12 +154,24 @@ def get_train_data(path="data/train.parquet"):
     X_df = data.drop([_target_column_name, "bike_count"], axis=1)
     return X_df, y_array
 
+#note that most of these features were not useful, and are so omitted during usage.
 def _merge_external_data(X):
+
+    """
+    Merges external weather data with the input DataFrame based on the 'date' column.
+
+    Args:
+        X (pd.DataFrame): The input DataFrame containing a 'date' column.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with merged weather data.
+    """
+    
     df = pd.read_csv(
-        "data/H_75_previous-2020-2022.csv.gz",
+        "/kaggle/input/h75-previous/H_75_previous-2020-2022.csv",
         parse_dates=["AAAAMMJJHH"],
         date_format="%Y%m%d%H",
-        compression="gzip",
+        #compression="gzip",
         sep=";",
     ).rename(columns={"AAAAMMJJHH": "date"})
 
@@ -131,7 +217,7 @@ X = _merge_external_data(X)
 X = covid_dates(X)
 X = create_features(X)
 X_train, y_train = X, y #retraining on full dataset
-y2 = np.where(y == 0, 0, 1)
+y2 = np.where(y == 0, 0, 1) #making this a classifying outcome
 
 date_encoder = FunctionTransformer(_encode_dates)
 #make sure to pass any date columns here as well
@@ -141,23 +227,31 @@ categorical_encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False
 categorical_cols = ["counter_name", "site_name"]
 binary_cols = ['in_date_range', 'is_rain', 'is_snow', 'is_rush_hour']
 location_cols = ['latitude', 'longitude']
-numerical_cols_lag = ['NEIGETOT']
-numerical_cols = ['RR1', 'DRR1', 'FF', 'FXY', 'FXI', 'FXI3S', 
-            'T', 'TD', 'TN', 'TX', 'DG', 'U', 'UX', 'DHUMI40',
-            'DHUMI80', 'INS', 'VV', 'DVV200', 'NEIGETOT', 'wind_chill']
-numerical_cols = ['T', 'wind_chill']
-#lag_transformer = LagFeatures(variables=numerical_cols_lag, periods=[2, 24, 48], missing_values='ignore')
 
-#these are created later, can find these with get_features_out
-lagged_cols = [
-    #'RR1_lag_2', 'FF_lag_2', 'T_lag_2', 'TD_lag_2', 'U_lag_2', 
-               'NEIGETOT_lag_2',
-    #'RR1_lag_24', 'FF_lag_24', 'T_lag_24', 'TD_lag_24', 'U_lag_24', 
-    'NEIGETOT_lag_24',
-    #           'RR1_lag_48', 'FF_lag_48', 'T_lag_48', 'TD_lag_48', 'U_lag_48', 
-    'NEIGETOT_lag_48']
+# The columns below were ultimately not used in prediction, they worsened model performance consistently
 
-#Choose which features to include at this stage
+# numerical_cols_lag = ['NEIGETOT']
+# numerical_cols = [
+#     'RR1', 'DRR1', 'FF', 'FXY', 'FXI', 'FXI3S', 
+#             'T', 
+#     'TD', 'TN', 'TX', 'DG', 'U', 'UX', 'DHUMI40',
+#             #'DHUMI80', 
+#     'INS', 
+#     'VV', 'DVV200', 'NEIGETOT', 'wind_chill'
+# ]
+# numerical_cols = ['T', 'wind_chill', 'INS']
+# #lag_transformer = LagFeatures(variables=numerical_cols_lag, periods=[2, 24, 48], missing_values='ignore')
+
+# #these are created later, can find these with get_features_out
+# lagged_cols = [
+#     #'RR1_lag_2', 'FF_lag_2', 'T_lag_2', 'TD_lag_2', 'U_lag_2', 
+#                'NEIGETOT_lag_2',
+#     #'RR1_lag_24', 'FF_lag_24', 'T_lag_24', 'TD_lag_24', 'U_lag_24', 
+#     'NEIGETOT_lag_24',
+#     #           'RR1_lag_48', 'FF_lag_48', 'T_lag_48', 'TD_lag_48', 'U_lag_48', 
+#     'NEIGETOT_lag_48']
+
+#Choose which features to include at this stage, we selected these based on experimentation
 preprocessor = ColumnTransformer(
     [
         ("date", OneHotEncoder(handle_unknown="ignore", sparse_output=False), date_cols),
@@ -171,6 +265,8 @@ preprocessor = ColumnTransformer(
     #remainder='passthrough'
 )
 
+
+# hyperparameter tuning was attempted, but failed to appreciably improve performance and indicated overfitting
 regressor = HistGradientBoostingRegressor(max_leaf_nodes=50, verbose=1, max_iter=5000)
 classifier = HistGradientBoostingClassifier(max_leaf_nodes=50, verbose=1, max_iter=5000)
 print(f'Building with {regressor} and {classifier}')
@@ -192,7 +288,7 @@ pipe_class = Pipeline([
 ])
 
 pipe.fit(X_train, y_train, 
-         #regressor__sample_weight=weights
+         #regressor__sample_weight=weights - this did not improve performance
          )
 
 pipe_class.fit(X_train, y2)
@@ -209,8 +305,9 @@ y_pred = pipe.predict(X_test)
 #y_pred = np.where(y_pred < 0, 0, y_pred)
 y_class = pipe_class.predict_proba(X_test)[:, 0]
 
-#y_out = np.where(y_class > 0.6, 0, y_pred)
-y_out = (1 - y_class) * y_pred
+y_out = np.where(y_class > 0.7, 0, y_pred) #if classifier is 70% sure, return 0, else return regressor's prediction
+#y_out = (1 - y_class) * y_pred #another way to incorporate both, though it introduces bias
+
 sol = {
     'Id': list(range(len(y_pred))),
     'log_bike_count': y_out.flatten()
