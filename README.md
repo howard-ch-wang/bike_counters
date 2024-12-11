@@ -19,6 +19,7 @@ Please consider the latest scripts associated with the submission. they are base
 ## Data added
 
 https://www.data.gouv.fr/fr/datasets/r/a77b4d44-d361-4e59-b6cc-cbbf435a2d89, by Météo-France
+Licensing: https://donneespubliques.meteofrance.fr/?fond=produit&id_produit=110&id_rubrique=37
 
 # Starting kit on the bike counters dataset
 
