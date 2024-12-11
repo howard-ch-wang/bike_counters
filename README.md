@@ -1,27 +1,24 @@
-# to do list
+# File Explanation
 
-1. Find weather information - howard
-2. DONE Create a .py with the pipeline, so we can experiment - sam
-3. research some nice time series algorithms, try to implement them with the data we have - both
+Broadly, we have feature engineering files, utility files, and experimentation scripts. 
 
-4. DONE merge existing external data to the basic dataset - sam
-5. DONE Implement GMR, test it and make a submission - sam
-6. DONE Inspect the test X distributions and the training X distributions - sam (could try again)
-7. DONE Experiment with Poisson Regression, try implementing ZILN loss - sam
-8. Feature importance, trying models on full data, create final script - make it look good.
+## Feature Engineering / utility
+1. test_features.py - feature engineering functions that help merge data, add features in the scripts
+2. utils.py - based on the starter code, adds classes for GMM, ZILN loss and prediction functions, cv, and so on.
 
-# Goals
+## Experimentation
+1. GMM.py - Implements the Gaussian Mixture Regression (gmr), using wrapper classes from utils.py. - https://github.com/AlexanderFabisch/gmr
+2. HGB.py - Implements HistogramGradientBoostingRegressor. This was also used to experiment with various feature combinations
+3. y_shape_based_models.py - Considering the high number of 0 values, this script experiments with Zero-Inflated LogNormal Loss and prediction. helper functions in utils.py from - https://github.com/google/lifetime_value/blob/master/lifetime_value/zero_inflated_lognormal.py, referencing https://arxiv.org/abs/1912.07753
+4. examine_features.ipynb - feature importance, hyperparam tuning
 
-2nd - Find the data, and find a model
+## Submission
 
-7th - Finalize model and data
+Please consider the scripts associated with the submission. they are based on final_script.py and final_script_2_model.py, but include more documentation and clarity.
 
-11th - Submission
-14th - Report
-20th - Presentation
+## Data added
 
-
-
+https://www.data.gouv.fr/fr/datasets/r/a77b4d44-d361-4e59-b6cc-cbbf435a2d89, by Météo-France
 
 # Starting kit on the bike counters dataset
 
