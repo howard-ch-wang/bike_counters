@@ -14,7 +14,7 @@ Broadly, we have feature engineering files, utility files, and experimentation s
 
 ## Submission
 
-Please consider the scripts associated with the submission. they are based on final_script.py and final_script_2_model.py, but include more documentation and clarity.
+Please consider the latest scripts associated with the submission. they are based on final_script.py and final_script_2_model.py, but include more documentation and clarity.
 
 ## Data added
 
