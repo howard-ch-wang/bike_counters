@@ -6,6 +6,11 @@ import utils
 # from external_data import example_estimator as ex
 
 def _merge_external_data(X):
+    """
+    Merge Hourly Weather dataset provided by Météo-France
+    Ref: https://www.data.gouv.fr/fr/datasets/r/a77b4d44-d361-4e59-b6cc-cbbf435a2d89
+    """
+
     df = pd.read_csv(
         "data/H_75_previous-2020-2022.csv.gz",
         parse_dates=["AAAAMMJJHH"],
